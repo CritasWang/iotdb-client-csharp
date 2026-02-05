@@ -66,7 +66,9 @@ namespace Apache.IoTDB
         public delegate Task<TResult> AsyncOperation<TResult>(Client client);
 
         /// <summary>
-        /// Gets the number of currently available clients in the pool.
+        /// Gets the approximate number of currently available clients in the pool.
+        /// This value is not synchronized and may be slightly out of date in highly concurrent scenarios.
+        /// It should be used for monitoring and diagnostic purposes only.
         /// </summary>
         public int AvailableClients => _clients?.ClientQueue.Count ?? 0;
 
@@ -463,7 +465,7 @@ namespace Apache.IoTDB
                 return _zoneId;
             }
 
-            var client = _clients.Take();
+            var client = _clients.Take(_poolSize, _failedReconnections);
 
             try
             {

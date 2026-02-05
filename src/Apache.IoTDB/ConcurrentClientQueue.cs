@@ -67,7 +67,7 @@ namespace Apache.IoTDB
             }
         }
         public int Timeout { get; set; } = 10;
-        public Client Take(int poolSize = 0, int failedReconnections = 0)
+        public Client Take(int poolSize, int failedReconnections)
         {
             Client client = null;
             Monitor.Enter(ClientQueue);
@@ -92,7 +92,7 @@ namespace Apache.IoTDB
                 throw new SessionPoolDepletedException(
                     $"Connection pool is empty and wait time out({Timeout}s)",
                     availableClients,
-                    poolSize > 0 ? poolSize : availableClients,
+                    poolSize,
                     failedReconnections);
             }
             return client;
