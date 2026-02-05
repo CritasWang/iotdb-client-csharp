@@ -157,6 +157,7 @@ namespace Apache.IoTDB
         public async Task<TResult> ExecuteClientOperationAsync<TResult>(AsyncOperation<TResult> operation, string errMsg, bool retryOnFailure = true, bool putClientBack = true)
         {
             Client client = _clients.Take();
+            bool shouldReturnClient = true;
             try
             {
                 var resp = await operation(client);
@@ -173,6 +174,8 @@ namespace Apache.IoTDB
                     }
                     catch (TException retryEx)
                     {
+                        // Reconnection failed, client is closed and should not be returned to pool
+                        shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
                 }
@@ -192,6 +195,8 @@ namespace Apache.IoTDB
                     }
                     catch (TException retryEx)
                     {
+                        // Reconnection failed, client is closed and should not be returned to pool
+                        shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
                 }
@@ -202,7 +207,7 @@ namespace Apache.IoTDB
             }
             finally
             {
-                if (putClientBack)
+                if (putClientBack && shouldReturnClient)
                 {
                     _clients.Add(client);
                 }
