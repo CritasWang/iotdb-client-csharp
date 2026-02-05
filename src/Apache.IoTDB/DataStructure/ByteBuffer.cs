@@ -1,5 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 using System;
-using System.Linq;
 using System.Text;
 
 namespace Apache.IoTDB.DataStructure
@@ -51,9 +69,12 @@ namespace Apache.IoTDB.DataStructure
         public int GetInt()
         {
             var intBuff = _buffer[_readPos..(_readPos + 4)];
-            if (_isLittleEndian) intBuff = intBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(intBuff);
+            }
 #if NET461_OR_GREATER || NETSTANDARD2_0
-            var intValue = BitConverter.ToInt32(intBuff,0);
+            var intValue = BitConverter.ToInt32(intBuff, 0);
 #else
             var intValue = BitConverter.ToInt32(intBuff);
 #endif
@@ -66,9 +87,12 @@ namespace Apache.IoTDB.DataStructure
         {
             var longBuff = _buffer[_readPos..(_readPos + 8)];
 
-            if (_isLittleEndian) longBuff = longBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(longBuff);
+            }
 #if NET461_OR_GREATER || NETSTANDARD2_0
-            var longValue = BitConverter.ToInt64(longBuff,0);
+            var longValue = BitConverter.ToInt64(longBuff, 0);
 #else
             var longValue = BitConverter.ToInt64(longBuff);
 #endif
@@ -81,9 +105,12 @@ namespace Apache.IoTDB.DataStructure
         {
             var floatBuff = _buffer[_readPos..(_readPos + 4)];
 
-            if (_isLittleEndian) floatBuff = floatBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(floatBuff);
+            }
 #if NET461_OR_GREATER || NETSTANDARD2_0
-            var floatValue = BitConverter.ToSingle(floatBuff,0);
+            var floatValue = BitConverter.ToSingle(floatBuff, 0);
 #else
             var floatValue = BitConverter.ToSingle(floatBuff);
 #endif
@@ -95,9 +122,12 @@ namespace Apache.IoTDB.DataStructure
         {
             var doubleBuff = _buffer[_readPos..(_readPos + 8)];
 
-            if (_isLittleEndian) doubleBuff = doubleBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(doubleBuff);
+            }
 #if NET461_OR_GREATER || NETSTANDARD2_0
-            var doubleValue = BitConverter.ToDouble(doubleBuff,0);
+            var doubleValue = BitConverter.ToDouble(doubleBuff, 0);
 #else
             var doubleValue = BitConverter.ToDouble(doubleBuff);
 #endif
@@ -114,9 +144,27 @@ namespace Apache.IoTDB.DataStructure
             return strValue;
         }
 
+        public byte[] GetBinary()
+        {
+            var length = GetInt();
+            var buff = _buffer[_readPos..(_readPos + length)];
+            _readPos += length;
+            return buff;
+        }
+
         public byte[] GetBuffer()
         {
             return _buffer[.._writePos];
+        }
+
+        public byte[] GetBytesByLength(int length)
+        {
+            if (_readPos + length > _buffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(length),
+                    $"Requested length ({length}) with current read position ({_readPos}) exceeds buffer size ({_buffer.Length}).");
+            var strBuff = _buffer[_readPos..(_readPos + length)];
+            _readPos += length;
+            return strBuff;
         }
 
         private void ExtendBuffer(int spaceNeed)
@@ -136,7 +184,10 @@ namespace Apache.IoTDB.DataStructure
         {
             var boolBuffer = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) boolBuffer = boolBuffer.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(boolBuffer);
+            }
 
             ExtendBuffer(boolBuffer.Length);
             boolBuffer.CopyTo(_buffer, _writePos);
@@ -147,7 +198,10 @@ namespace Apache.IoTDB.DataStructure
         {
             var intBuff = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) intBuff = intBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(intBuff);
+            }
 
             ExtendBuffer(intBuff.Length);
             intBuff.CopyTo(_buffer, _writePos);
@@ -158,7 +212,10 @@ namespace Apache.IoTDB.DataStructure
         {
             var longBuff = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) longBuff = longBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(longBuff);
+            }
 
             ExtendBuffer(longBuff.Length);
             longBuff.CopyTo(_buffer, _writePos);
@@ -169,7 +226,10 @@ namespace Apache.IoTDB.DataStructure
         {
             var floatBuff = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) floatBuff = floatBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(floatBuff);
+            }
 
             ExtendBuffer(floatBuff.Length);
             floatBuff.CopyTo(_buffer, _writePos);
@@ -180,7 +240,10 @@ namespace Apache.IoTDB.DataStructure
         {
             var doubleBuff = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) doubleBuff = doubleBuff.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(doubleBuff);
+            }
 
             ExtendBuffer(doubleBuff.Length);
             doubleBuff.CopyTo(_buffer, _writePos);
@@ -198,11 +261,23 @@ namespace Apache.IoTDB.DataStructure
             _writePos += strBuf.Length;
         }
 
+        public void AddBinary(byte[] value)
+        {
+            AddInt(value.Length);
+
+            ExtendBuffer(value.Length);
+            value.CopyTo(_buffer, _writePos);
+            _writePos += value.Length;
+        }
+
         public void AddChar(char value)
         {
             var charBuf = BitConverter.GetBytes(value);
 
-            if (_isLittleEndian) charBuf = charBuf.Reverse().ToArray();
+            if (_isLittleEndian)
+            {
+                Array.Reverse(charBuf);
+            }
 
             ExtendBuffer(charBuf.Length);
             charBuf.CopyTo(_buffer, _writePos);

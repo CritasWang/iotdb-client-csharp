@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -19,18 +38,21 @@ namespace Apache.IoTDB.DataStructure
     *
     * @deprecated
     * Notice: The tablet should not have empty cell
-    * 
+    *
     * From 0.13 IoTDB Server, tablet could have empty cell
     *
     */
     public class Tablet
     {
+
+        private static int EMPTY_DATE_INT = 10000101;
         private readonly List<long> _timestamps;
         private readonly List<List<object>> _values;
 
-        public string DeviceId { get; }
+        public string InsertTargetName { get; }
         public List<string> Measurements { get; }
         public List<TSDataType> DataTypes { get; }
+        public List<ColumnCategory> ColumnCategories { get; }
         public BitMap[] BitMaps;
         public int RowNumber { get; }
         public int ColNumber { get; }
@@ -73,7 +95,7 @@ namespace Apache.IoTDB.DataStructure
                 _timestamps = timestamps;
             }
 
-            DeviceId = deviceId;
+            InsertTargetName = deviceId;
             Measurements = measurements;
             DataTypes = dataTypes;
             RowNumber = timestamps.Count;
@@ -91,6 +113,71 @@ namespace Apache.IoTDB.DataStructure
                 }
             }
         }
+
+        public Tablet(
+            string tableName,
+            List<string> columnNames,
+            List<ColumnCategory> columnCategories,
+            List<TSDataType> dataTypes,
+            List<List<object>> values,
+            List<long> timestamps)
+        {
+            if (timestamps.Count != values.Count)
+            {
+                throw new Exception(
+                    $"Input error. Timestamps.Count({timestamps.Count}) does not equal to Values.Count({values.Count}).",
+                    null);
+            }
+
+            if (columnNames.Count != dataTypes.Count)
+            {
+                throw new Exception(
+                    $"Input error. ColumnNames.Count({columnNames.Count}) does not equal to DataTypes.Count({dataTypes.Count}).",
+                    null);
+            }
+            if (columnNames.Count != columnCategories.Count)
+            {
+                throw new Exception(
+                    $"Input error. ColumnNames.Count({columnNames.Count}) does not equal to ColumnCategories.Count({columnCategories.Count}).",
+                    null);
+            }
+
+            if (!_utilFunctions.IsSorted(timestamps))
+            {
+                var sorted = timestamps
+                    .Select((x, index) => (timestamp: x, values: values[index]))
+                    .OrderBy(x => x.timestamp).ToList();
+
+                _timestamps = sorted.Select(x => x.timestamp).ToList();
+                _values = sorted.Select(x => x.values).ToList();
+            }
+            else
+            {
+                _values = values;
+                _timestamps = timestamps;
+            }
+
+            InsertTargetName = tableName;
+            Measurements = columnNames;
+            ColumnCategories = columnCategories;
+            DataTypes = dataTypes;
+            RowNumber = timestamps.Count;
+            ColNumber = columnNames.Count;
+
+            // reset bitmap
+            if (BitMaps != null)
+            {
+                foreach (var bitmap in BitMaps)
+                {
+                    if (bitmap != null)
+                    {
+                        bitmap.reset();
+                    }
+                }
+            }
+        }
+
+        [Obsolete("Deprecated, use the constructor with List<TSDataType> instead")]
         public Tablet(
             string deviceId,
             List<string> measurements,
@@ -118,7 +205,7 @@ namespace Apache.IoTDB.DataStructure
                 _timestamps = timestamps;
             }
 
-            DeviceId = deviceId;
+            InsertTargetName = deviceId;
             Measurements = measurements;
             RowNumber = timestamps.Count;
             ColNumber = measurements.Count;
@@ -149,6 +236,12 @@ namespace Apache.IoTDB.DataStructure
                                 break;
                             case string _:
                                 DataTypes.Add(TSDataType.TEXT);
+                                break;
+                            case byte[] _:
+                                DataTypes.Add(TSDataType.BLOB);
+                                break;
+                            case DateTime _:
+                                DataTypes.Add(TSDataType.DATE);
                                 break;
                             default:
                                 throw new Exception(
@@ -197,6 +290,13 @@ namespace Apache.IoTDB.DataStructure
             return dataTypeValues;
         }
 
+        public List<sbyte> GetColumnColumnCategories()
+        {
+            var columnCategories = ColumnCategories.ConvertAll(x => (sbyte)x);
+
+            return columnCategories;
+        }
+
         private int EstimateBufferSize()
         {
             var estimateSize = 0;
@@ -210,9 +310,11 @@ namespace Apache.IoTDB.DataStructure
                         estimateSize += 1;
                         break;
                     case TSDataType.INT32:
+                    case TSDataType.DATE:
                         estimateSize += 4;
                         break;
                     case TSDataType.INT64:
+                    case TSDataType.TIMESTAMP:
                         estimateSize += 8;
                         break;
                     case TSDataType.FLOAT:
@@ -222,6 +324,8 @@ namespace Apache.IoTDB.DataStructure
                         estimateSize += 8;
                         break;
                     case TSDataType.TEXT:
+                    case TSDataType.BLOB:
+                    case TSDataType.STRING:
                         estimateSize += 8;
                         break;
                     default:
@@ -266,65 +370,85 @@ namespace Apache.IoTDB.DataStructure
                 switch (dataType)
                 {
                     case TSDataType.BOOLEAN:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddBool(value != null ? (bool)value : false);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddBool(value != null ? (bool)value : false);
                         }
+
+                        break;
+                    }
                     case TSDataType.INT32:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddInt(value != null ? (int)value : int.MinValue);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddInt(value != null ? (int)value : int.MinValue);
                         }
+
+                        break;
+                    }
                     case TSDataType.INT64:
+                    case TSDataType.TIMESTAMP:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddLong(value != null ? (long)value : long.MinValue);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddLong(value != null ? (long)value : long.MinValue);
                         }
+
+                        break;
+                    }
                     case TSDataType.FLOAT:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddFloat(value != null ? (float)value : float.MinValue);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddFloat(value != null ? (float)value : float.MinValue);
                         }
+
+                        break;
+                    }
                     case TSDataType.DOUBLE:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddDouble(value != null ? (double)value : double.MinValue);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddDouble(value != null ? (double)value : double.MinValue);
                         }
+
+                        break;
+                    }
                     case TSDataType.TEXT:
+                    case TSDataType.STRING:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
                         {
-                            for (int j = 0; j < RowNumber; j++)
-                            {
-                                var value = _values[j][i];
-                                buffer.AddStr(value != null ? (string)value : string.Empty);
-                            }
-
-                            break;
+                            var value = _values[j][i];
+                            buffer.AddStr(value != null ? (string)value : string.Empty);
                         }
+
+                        break;
+                    }
+                    case TSDataType.DATE:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
+                        {
+                            var value = _values[j][i];
+                            buffer.AddInt(value != null ? Utils.ParseDateToInt((DateTime)value) : EMPTY_DATE_INT);
+                        }
+                        break;
+                    }
+                    case TSDataType.BLOB:
+                    {
+                        for (int j = 0; j < RowNumber; j++)
+                        {
+                            var value = _values[j][i];
+                            buffer.AddBinary(value != null ? (byte[])value : new byte[] { });
+                        }
+                        break;
+                    }
                     default:
                         throw new Exception($"Unsupported data type {dataType}", null);
                 }

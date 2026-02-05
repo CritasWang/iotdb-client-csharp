@@ -1,6 +1,22 @@
-﻿
+﻿/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
-using Apache.IoTDB.DataStructure;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -13,7 +29,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
- 
+using Apache.IoTDB.DataStructure;
+
 
 namespace Apache.IoTDB.Data
 {
@@ -245,7 +262,7 @@ namespace Apache.IoTDB.Data
             => ExecuteReader(CommandBehavior.Default);
 
 
-  
+
 
         /// <summary>
         ///     Executes the <see cref="CommandText" /> against the database and returns a data reader.
@@ -281,7 +298,7 @@ namespace Apache.IoTDB.Data
                     throw new InvalidOperationException($"CallRequiresOpenConnection{nameof(ExecuteReader)}");
                 }
             }
-         
+
 
             if (string.IsNullOrEmpty(_commandText))
             {
@@ -297,7 +314,7 @@ namespace Apache.IoTDB.Data
                 Debug.WriteLine($"_commandText:{_commandText}");
 #endif
                 int _affectRows = 0;
-                SessionDataSet dataSet=null;
+                SessionDataSet dataSet = null;
                 bool isok = false;
                 Task<SessionDataSet> taskDataSet = null;
                 if (_parameters.IsValueCreated)
@@ -309,7 +326,7 @@ namespace Apache.IoTDB.Data
                 }
                 else
                 {
-                    
+
                     var sessionData = Task.Run(() => _IoTDB.ExecuteQueryStatementAsync(_commandText));
                     isok = sessionData.Wait(TimeSpan.FromSeconds(CommandTimeout));
                     if (isok)
@@ -319,9 +336,9 @@ namespace Apache.IoTDB.Data
                     }
                 }
 
-                if (isok && dataSet != null  )
+                if (isok && dataSet != null)
                 {
-                    dataReader = new IoTDBDataReader(this, dataSet, closeConnection  );
+                    dataReader = new IoTDBDataReader(this, dataSet, closeConnection);
                 }
                 else if (taskDataSet.Status == TaskStatus.Running || !isok)
                 {
@@ -337,7 +354,7 @@ namespace Apache.IoTDB.Data
                 }
                 else
                 {
-                    IoTDBException.ThrowExceptionForRC(_commandText, new IoTDBErrorResult() { Code = -10007, Error = $"Unknow Exception" });
+                    IoTDBException.ThrowExceptionForRC(_commandText, new IoTDBErrorResult() { Code = -10007, Error = $"Unknown Exception" });
                 }
             }
             catch when (unprepared)
@@ -350,19 +367,19 @@ namespace Apache.IoTDB.Data
         private RowRecord BindParamters(IoTDBParameterCollection pms)
         {
             var measures = new List<string>();
-            var values = new List<object> ();
-           
+            var values = new List<object>();
+
 
             for (int i = 0; i < pms.Count; i++)
             {
 
                 var tp = pms[i];
                 measures.Add(tp.ParameterName);
-             //   _commandText = _commandText.Replace(tp.ParameterName, "?");
+                //   _commandText = _commandText.Replace(tp.ParameterName, "?");
                 switch (TypeInfo.GetTypeCode(tp.Value?.GetType()))
                 {
                     case TypeCode.Boolean:
-                       values.Add ((tp.Value as bool?).GetValueOrDefault());
+                        values.Add((tp.Value as bool?).GetValueOrDefault());
                         break;
                     case TypeCode.Char:
                         values.Add(tp.Value as string);
@@ -380,7 +397,7 @@ namespace Apache.IoTDB.Data
                         values.Add(t0.GetValueOrDefault());
                         break;
                     case TypeCode.DBNull:
-                   
+
                         break;
                     case TypeCode.Single:
                         values.Add((tp.Value as float?).GetValueOrDefault());
@@ -414,7 +431,7 @@ namespace Apache.IoTDB.Data
                 }
             }
 
-            return   new RowRecord(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),values,measures);
+            return new RowRecord(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), values, measures);
         }
 
         /// <summary>
@@ -506,8 +523,8 @@ namespace Apache.IoTDB.Data
                 throw new InvalidOperationException($"CallRequiresSetCommandText{nameof(ExecuteNonQuery)}");
             }
             var result = Task.Run(() => _IoTDB.ExecuteNonQueryStatementAsync(_commandText));
-             var ok = result.Wait(TimeSpan.FromSeconds(CommandTimeout));
-            if (!ok) throw new  TimeoutException();
+            var ok = result.Wait(TimeSpan.FromSeconds(CommandTimeout));
+            if (!ok) throw new TimeoutException();
             return result.Result;
         }
 
@@ -534,7 +551,7 @@ namespace Apache.IoTDB.Data
                     : null;
             }
         }
-      
+
         /// <summary>
         ///     Attempts to cancel the execution of the command. Does nothing.
         /// </summary>
@@ -542,6 +559,6 @@ namespace Apache.IoTDB.Data
         {
         }
 
-      
+
     }
 }

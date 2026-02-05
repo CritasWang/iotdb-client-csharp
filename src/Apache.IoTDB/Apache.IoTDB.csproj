@@ -1,16 +1,30 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<TargetFrameworks>net5.0;net6.0;netstandard2.1;netstandard2.0;net461</TargetFrameworks>
-		<LangVersion>latest</LangVersion>
+    <PropertyGroup>
+        <TargetFrameworks>net5.0;net6.0;netstandard2.1;netstandard2.0;net461</TargetFrameworks>
+        <LangVersion>latest</LangVersion>
+        <Authors>eedalong, lausannel, MysticBoy, Aiemu, HTHou, CritasWang</Authors>
+        <PackageProjectUrl>https://github.com/apache/iotdb-client-csharp</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/apache/iotdb-client-csharp</RepositoryUrl>
+        <PackageLicenseExpression>APACHE-2.0</PackageLicenseExpression>
+	      <RepositoryType>git</RepositoryType>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Description>
+		C# client of Apache IoTDB.
+		Apache IoTDB (Internet of Things Database) is a data management system for time series data, which can provide users specific services, such as, data collection, storage and analysis. Due to its light weight structure, high performance and usable features together with its seamless integration with the Hadoop and Spark ecology, IoTDB meets the requirements of massive dataset storage, high throughput data input, and complex data analysis in the industrial IoT field.
+	</Description>
 
-	</PropertyGroup>
+    </PropertyGroup>
 
-	<ItemGroup>
-		<PackageReference Include="ApacheThrift" Version="0.14.1" />
-	</ItemGroup>
-	<ItemGroup Condition="'$(TargetFramework)' == 'net461' or '$(TargetFramework)' == 'netstandard2.0'">
-		<PackageReference Include="IndexRange" Version="1.0.2" />
-	</ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="ApacheThrift" Version="0.14.1" />
+    </ItemGroup>
+    <ItemGroup
+        Condition="'$(TargetFramework)' == 'net461' or '$(TargetFramework)' == 'netstandard2.0'">
+        <PackageReference Include="IndexRange" Version="1.0.2" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" PackagePath="\"/>
+    </ItemGroup>
 
 </Project>

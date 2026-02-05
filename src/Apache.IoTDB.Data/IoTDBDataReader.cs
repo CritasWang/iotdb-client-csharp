@@ -1,4 +1,22 @@
-﻿using Apache.IoTDB.DataStructure;
+﻿/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -8,7 +26,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
- 
+using Apache.IoTDB.DataStructure;
+
 
 namespace Apache.IoTDB.Data
 {
@@ -22,12 +41,12 @@ namespace Apache.IoTDB.Data
         private bool _hasRows;
         private readonly int _recordsAffected;
         private bool _closed;
-        private readonly  List<string> _metas;
+        private IReadOnlyList<string> _metas;
         private bool _closeConnection;
- 
+
         private int _fieldCount;
-      
-        RowRecord rowdata= null;
+
+        RowRecord rowdata = null;
 
 
         SessionDataSet _dataSet;
@@ -36,11 +55,12 @@ namespace Apache.IoTDB.Data
             _IoTDB = IoTDBCommand.Connection._IoTDB;
             _command = IoTDBCommand;
             _closeConnection = closeConnection;
-            _fieldCount = dataSet.ColumnNames.Count;
-            _hasRows = dataSet.RowCount > 0;
-            _recordsAffected =dataSet.RowCount;
+            _fieldCount = dataSet.GetColumnNames().Count;
+            _hasRows = dataSet.RowCount() > 0;
+            _recordsAffected = dataSet.RowCount();
+
             _closed = _closeConnection;
-            _metas = dataSet.ColumnNames;
+            _metas = dataSet.GetColumnNames();
             _dataSet = dataSet;
         }
 
@@ -54,7 +74,7 @@ namespace Apache.IoTDB.Data
         ///     Gets the number of columns in the current row.
         /// </summary>
         /// <value>The number of columns in the current row.</value>
-        public override int FieldCount => _fieldCount+1;
+        public override int FieldCount => _fieldCount + 1;
 
         /// <summary>
         ///     Gets a value indicating whether the data reader contains any rows.
@@ -62,8 +82,8 @@ namespace Apache.IoTDB.Data
         /// <value>A value indicating whether the data reader contains any rows.</value>
         public override bool HasRows
             => _hasRows;
- 
- 
+
+
         /// <summary>
         ///     Gets a value indicating whether the data reader is closed.
         /// </summary>
@@ -79,7 +99,7 @@ namespace Apache.IoTDB.Data
         {
             get
             {
-                return _recordsAffected; 
+                return _recordsAffected;
             }
         }
 
@@ -159,13 +179,13 @@ namespace Apache.IoTDB.Data
             _dataSet.Close().GetAwaiter().GetResult();
             _command.DataReader = null;
 
-            if (_closeConnection  )
+            if (_closeConnection)
             {
                 _command.Connection.Close();
                 _closed = true;
             }
             rowdata = null;
-        
+
         }
 
         /// <summary>
@@ -175,7 +195,7 @@ namespace Apache.IoTDB.Data
         /// <returns>The name of the column.</returns>
         public override string GetName(int ordinal)
         {
-            return ordinal==0? "timestamp" : rowdata.Measurements[ordinal-1];
+            return ordinal == 0 ? "timestamp" : rowdata.Measurements[ordinal - 1];
         }
 
         /// <summary>
@@ -184,7 +204,7 @@ namespace Apache.IoTDB.Data
         /// <param name="name">The name of the column.</param>
         /// <returns>The zero-based column ordinal.</returns>
         public override int GetOrdinal(string name)
-            => "timestamp"==name?0: rowdata.Measurements.IndexOf(  name)+1;
+            => "timestamp" == name ? 0 : rowdata.Measurements.IndexOf(name) + 1;
 
         public override string GetDataTypeName(int ordinal)
         {
@@ -198,8 +218,8 @@ namespace Apache.IoTDB.Data
         /// <returns>The data type of the column.</returns>
         public override Type GetFieldType(int ordinal)
         {
-        
-            return ordinal==0?typeof(DateTime): rowdata.GetCrlType(ordinal-1);
+
+            return ordinal == 0 ? typeof(DateTime) : rowdata.GetCrlType(ordinal - 1);
         }
 
         /// <summary>
@@ -338,8 +358,8 @@ namespace Apache.IoTDB.Data
         /// <param name="ordinal">The zero-based column ordinal.</param>
         /// <returns>The value of the column.</returns>
         public override string GetString(int ordinal) => (string)GetValue(ordinal);
- 
-  
+
+
         /// <summary>
         ///     Reads a stream of bytes from the specified column. Not supported.
         /// </summary>
@@ -405,7 +425,7 @@ namespace Apache.IoTDB.Data
             return result;
         }
 
-       
+
 
         /// <summary>
         ///     Gets the column values of the current row.
@@ -419,9 +439,9 @@ namespace Apache.IoTDB.Data
             for (int i = 0; i < _fieldCount; i++)
             {
                 var obj = rowdata.Values[i];
-                if (obj != null  )
+                if (obj != null)
                 {
-                    values[i+1] = obj;
+                    values[i + 1] = obj;
                     count++;
                 }
             }
@@ -437,10 +457,10 @@ namespace Apache.IoTDB.Data
         {
             if (_dataSet.HasNext())
             {
-                rowdata = _dataSet.GetRow();
+                rowdata = _dataSet.Next();
             }
-                   var schemaTable = new DataTable("SchemaTable");
-            if (_metas != null && rowdata !=null)
+            var schemaTable = new DataTable("SchemaTable");
+            if (_metas != null && rowdata != null)
             {
                 var ColumnName = new DataColumn(SchemaTableColumn.ColumnName, typeof(string));
                 var ColumnOrdinal = new DataColumn(SchemaTableColumn.ColumnOrdinal, typeof(int));
@@ -506,27 +526,27 @@ namespace Apache.IoTDB.Data
                 var tableName1 = string.Empty;
                 schemaRow1[BaseTableName] = tableName1;
                 schemaRow1[DataType] = typeof(DateTime);
-                schemaRow1[DataTypeName] = typeof(DateTime).Name;
+                schemaRow1[DataTypeName] = nameof(DateTime);
                 schemaRow1[IsExpression] = columnName1 == null;
                 schemaRow1[IsLong] = DBNull.Value;
                 schemaRow1[IsKey] = true;
-        
- 
+
+
                 schemaTable.Rows.Add(schemaRow1);
 
 
-                for (var i = 1; i < rowdata.Measurements.Count+1; i++)
+                for (var i = 1; i < rowdata.Measurements.Count + 1; i++)
                 {
                     var schemaRow = schemaTable.NewRow();
 
-                    var columnName = rowdata.Measurements[i-1] ;
+                    var columnName = rowdata.Measurements[i - 1];
                     schemaRow[ColumnName] = columnName;
                     schemaRow[ColumnOrdinal] = i;
-               
+
                     schemaRow[NumericPrecision] = DBNull.Value;
                     schemaRow[NumericScale] = DBNull.Value;
                     schemaRow[BaseServerName] = _command.Connection.DataSource;
-              
+
                     schemaRow[BaseColumnName] = columnName;
                     schemaRow[BaseSchemaName] = DBNull.Value;
                     var tableName = string.Empty;
@@ -535,7 +555,7 @@ namespace Apache.IoTDB.Data
                     schemaRow[DataTypeName] = GetDataTypeName(i);
                     schemaRow[IsExpression] = columnName == null;
                     schemaRow[IsLong] = DBNull.Value;
-                    schemaRow[IsKey]= false;
+                    schemaRow[IsKey] = false;
                     schemaRow[AllowDBNull] = true;
                     schemaTable.Rows.Add(schemaRow);
                 }

@@ -9,16 +9,23 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: '9.0.x'
     - name: Restore dependencies
       run: dotnet restore "src/Apache.IoTDB/Apache.IoTDB.csproj"
+    - name: Check License Header
+      # skywalking-eyes doesn't support windows
+      if: runner.os == 'Linux'
+      uses: apache/skywalking-eyes@v0.6.0
     - name: Build
       run: dotnet build --no-restore "src/Apache.IoTDB/Apache.IoTDB.csproj"
     - name: Test
