@@ -158,9 +158,11 @@ namespace Apache.IoTDB
         {
             Client client = _clients.Take();
             bool shouldReturnClient = true;
+            bool operationSucceeded = false;
             try
             {
                 var resp = await operation(client);
+                operationSucceeded = true;
                 return resp;
             }
             catch (TException ex)
@@ -170,11 +172,19 @@ namespace Apache.IoTDB
                     try
                     {
                         client = await Reconnect(client);
-                        return await operation(client);
+                        var resp = await operation(client);
+                        operationSucceeded = true;
+                        return resp;
                     }
                     catch (TException retryEx)
                     {
                         // Reconnection failed, client is closed and should not be returned to pool
+                        shouldReturnClient = false;
+                        throw new TException(errMsg, retryEx);
+                    }
+                    catch (Exception retryEx)
+                    {
+                        // Reconnection failed with non-TException, client is closed and should not be returned to pool
                         shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
@@ -191,11 +201,19 @@ namespace Apache.IoTDB
                     try
                     {
                         client = await Reconnect(client);
-                        return await operation(client);
+                        var resp = await operation(client);
+                        operationSucceeded = true;
+                        return resp;
                     }
                     catch (TException retryEx)
                     {
                         // Reconnection failed, client is closed and should not be returned to pool
+                        shouldReturnClient = false;
+                        throw new TException(errMsg, retryEx);
+                    }
+                    catch (Exception retryEx)
+                    {
+                        // Reconnection failed with non-TException, client is closed and should not be returned to pool
                         shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
@@ -207,7 +225,11 @@ namespace Apache.IoTDB
             }
             finally
             {
-                if (putClientBack && shouldReturnClient)
+                // Return client to pool if:
+                // 1. putClientBack is true (normal operations), OR
+                // 2. putClientBack is false BUT operation failed (query operations where SessionDataSet wasn't created)
+                // Do NOT return if reconnection failed (shouldReturnClient is false) because client was closed
+                if (shouldReturnClient && (putClientBack || !operationSucceeded))
                 {
                     _clients.Add(client);
                 }
