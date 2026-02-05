@@ -61,6 +61,25 @@ dotnet add package Apache.IoTDB
 
 对于希望深入了解客户端用法并探索更高级特性的用户，samples目录包含了额外的代码示例。
 
+## 功能特性
+
+### SessionPool异常处理和健康监控
+
+C#客户端为SessionPool操作提供了全面的异常处理和健康监控功能:
+
+- **SessionPoolDepletedException（会话池耗尽异常）**: 当池无法提供客户端连接时，提供详细信息的专用异常，包括：
+  - 耗尽原因（超时、重连失败等）
+  - 可用客户端数量
+  - 总池大小
+  - 重连失败次数
+
+- **健康指标**: 通过属性实时监控池状态：
+  - `AvailableClients`: 当前可用的客户端数量
+  - `TotalPoolSize`: 配置的最大池大小
+  - `FailedReconnections`: 重连失败的累计次数
+
+有关异常处理、监控和恢复策略的详细信息，请参阅 [SessionPool异常处理指南](./docs/SessionPool_Exception_Handling.md)。
+
 
 ## iotdb-client-csharp的开发者环境要求
 

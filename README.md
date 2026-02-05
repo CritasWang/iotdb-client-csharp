@@ -63,6 +63,25 @@ Users can quickly get started by referring to the use cases under the Apache-IoT
 
 For those who wish to delve deeper into the client's usage and explore more advanced features, the samples directory contains additional code samples. 
 
+## Features
+
+### SessionPool Exception Handling and Health Monitoring
+
+The C# client provides comprehensive exception handling and health monitoring for SessionPool operations:
+
+- **SessionPoolDepletedException**: A specialized exception that provides detailed information when the pool cannot provide a client connection, including:
+  - Depletion reason (timeout, reconnection failure, etc.)
+  - Available clients count
+  - Total pool size
+  - Failed reconnection attempts count
+
+- **Health Metrics**: Real-time monitoring of pool status through properties:
+  - `AvailableClients`: Number of idle clients ready for use
+  - `TotalPoolSize`: Configured maximum pool size
+  - `FailedReconnections`: Cumulative count of failed reconnection attempts
+
+For detailed information on exception handling, monitoring, and recovery strategies, see the [SessionPool Exception Handling Guide](./docs/SessionPool_Exception_Handling.md).
+
 ## Developer environment requirements for iotdb-client-csharp
 
 ```

@@ -62,7 +62,23 @@ namespace Apache.IoTDB
         private bool _isClose = true;
         private ConcurrentClientQueue _clients;
         private ILogger _logger;
+        private int _failedReconnections = 0;
         public delegate Task<TResult> AsyncOperation<TResult>(Client client);
+
+        /// <summary>
+        /// Gets the number of currently available clients in the pool.
+        /// </summary>
+        public int AvailableClients => _clients?.ClientQueue.Count ?? 0;
+
+        /// <summary>
+        /// Gets the total configured size of the session pool.
+        /// </summary>
+        public int TotalPoolSize => _poolSize;
+
+        /// <summary>
+        /// Gets the number of failed reconnection attempts since the pool was opened.
+        /// </summary>
+        public int FailedReconnections => _failedReconnections;
 
 
         [Obsolete("This method is deprecated, please use new SessionPool.Builder().")]
@@ -156,7 +172,7 @@ namespace Apache.IoTDB
         }
         public async Task<TResult> ExecuteClientOperationAsync<TResult>(AsyncOperation<TResult> operation, string errMsg, bool retryOnFailure = true, bool putClientBack = true)
         {
-            Client client = _clients.Take();
+            Client client = _clients.Take(_poolSize, _failedReconnections);
             bool shouldReturnClient = true;
             bool operationSucceeded = false;
             try
@@ -181,9 +197,13 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
-                        // Preserve original error message from server
-                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
-                        throw new TException(detailedMsg, retryEx);
+                        // Throw SessionPoolDepletedException with health metrics
+                        throw new SessionPoolDepletedException(
+                            $"{errMsg}. Reconnection failed: {retryEx.Message}",
+                            AvailableClients,
+                            TotalPoolSize,
+                            FailedReconnections,
+                            retryEx);
                     }
                 }
                 else
@@ -209,9 +229,13 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
-                        // Preserve original error message from server
-                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
-                        throw new TException(detailedMsg, retryEx);
+                        // Throw SessionPoolDepletedException with health metrics
+                        throw new SessionPoolDepletedException(
+                            $"{errMsg}. Reconnection failed: {retryEx.Message}",
+                            AvailableClients,
+                            TotalPoolSize,
+                            FailedReconnections,
+                            retryEx);
                     }
                 }
                 else
@@ -376,6 +400,8 @@ namespace Apache.IoTDB
                 }
             }
 
+            // Increment failed reconnections counter before throwing
+            System.Threading.Interlocked.Increment(ref _failedReconnections);
             throw new TException("Error occurs when reconnecting session pool. Could not connect to any server", null);
         }
 
