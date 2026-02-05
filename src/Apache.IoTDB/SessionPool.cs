@@ -176,15 +176,10 @@ namespace Apache.IoTDB
                         operationSucceeded = true;
                         return resp;
                     }
-                    catch (TException retryEx)
-                    {
-                        // Reconnection failed, client is closed and should not be returned to pool
-                        shouldReturnClient = false;
-                        throw new TException(errMsg, retryEx);
-                    }
                     catch (Exception retryEx)
                     {
-                        // Reconnection failed with non-TException, client is closed and should not be returned to pool
+                        // Reconnection failed or retry operation failed
+                        // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
@@ -205,15 +200,10 @@ namespace Apache.IoTDB
                         operationSucceeded = true;
                         return resp;
                     }
-                    catch (TException retryEx)
-                    {
-                        // Reconnection failed, client is closed and should not be returned to pool
-                        shouldReturnClient = false;
-                        throw new TException(errMsg, retryEx);
-                    }
                     catch (Exception retryEx)
                     {
-                        // Reconnection failed with non-TException, client is closed and should not be returned to pool
+                        // Reconnection failed or retry operation failed
+                        // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
                         throw new TException(errMsg, retryEx);
                     }
@@ -226,10 +216,12 @@ namespace Apache.IoTDB
             finally
             {
                 // Return client to pool if:
-                // 1. putClientBack is true (normal operations), OR
-                // 2. putClientBack is false BUT operation failed (query operations where SessionDataSet wasn't created)
-                // Do NOT return if reconnection failed (shouldReturnClient is false) because client was closed
-                if (shouldReturnClient && (putClientBack || !operationSucceeded))
+                // 1. putClientBack is true (normal operations - client should always be returned), OR
+                // 2. putClientBack is false (query operations) BUT operation failed, meaning SessionDataSet 
+                //    wasn't created and won't manage the client
+                // Do NOT return if reconnection failed (shouldReturnClient is false) because client was closed by Reconnect
+                bool shouldReturnForQueryFailure = !putClientBack && !operationSucceeded;
+                if (shouldReturnClient && (putClientBack || shouldReturnForQueryFailure))
                 {
                     _clients.Add(client);
                 }
