@@ -181,12 +181,16 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
-                        throw new TException(errMsg, retryEx);
+                        // Preserve original error message from server
+                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
+                        throw new TException(detailedMsg, retryEx);
                     }
                 }
                 else
                 {
-                    throw new TException(errMsg, ex);
+                    // Preserve original error message from server
+                    string detailedMsg = $"{errMsg}. {ex.Message}";
+                    throw new TException(detailedMsg, ex);
                 }
             }
             catch (Exception ex)
@@ -205,12 +209,16 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
-                        throw new TException(errMsg, retryEx);
+                        // Preserve original error message from server
+                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
+                        throw new TException(detailedMsg, retryEx);
                     }
                 }
                 else
                 {
-                    throw new TException(errMsg, ex);
+                    // Preserve original error message from server
+                    string detailedMsg = $"{errMsg}. {ex.Message}";
+                    throw new TException(detailedMsg, ex);
                 }
             }
             finally
