@@ -34,9 +34,11 @@ using Thrift.Transport.Client;
 namespace Apache.IoTDB
 {
 
-    public partial class SessionPool : IDisposable
+    public partial class SessionPool : IDisposable, IPoolDiagnosticReporter
     {
         private static readonly TSProtocolVersion ProtocolVersion = TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3;
+        private const string ReconnectErrorSignature = "Error occurs when reconnecting session pool";
+        private const string DepletionReasonReconnectFailed = "Reconnection failed";
 
         private readonly string _username;
         private readonly string _password;
@@ -62,7 +64,24 @@ namespace Apache.IoTDB
         private bool _isClose = true;
         private ConcurrentClientQueue _clients;
         private ILogger _logger;
+        private PoolHealthMetrics _healthMetrics;
+        
         public delegate Task<TResult> AsyncOperation<TResult>(Client client);
+        
+        /// <summary>
+        /// Retrieves current count of idle clients ready for operations.
+        /// </summary>
+        public int AvailableClients => _clients?.ClientQueue.Count ?? 0;
+        
+        /// <summary>
+        /// Retrieves the configured maximum capacity of the session pool.
+        /// </summary>
+        public int TotalPoolSize => _healthMetrics?.GetConfiguredMaxSize() ?? _poolSize;
+        
+        /// <summary>
+        /// Retrieves cumulative tally of reconnection failures since pool was opened.
+        /// </summary>
+        public int FailedReconnections => _healthMetrics?.GetReconnectionFailureTally() ?? 0;
 
 
         [Obsolete("This method is deprecated, please use new SessionPool.Builder().")]
@@ -181,6 +200,13 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
+                        
+                        // Check if this is a reconnection failure from Reconnect method
+                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
+                        {
+                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                        }
+                        
                         // Preserve original error message from server
                         string detailedMsg = $"{errMsg}. {retryEx.Message}";
                         throw new TException(detailedMsg, retryEx);
@@ -209,6 +235,13 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
+                        
+                        // Check if this is a reconnection failure from Reconnect method
+                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
+                        {
+                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                        }
+                        
                         // Preserve original error message from server
                         string detailedMsg = $"{errMsg}. {retryEx.Message}";
                         throw new TException(detailedMsg, retryEx);
@@ -264,8 +297,10 @@ namespace Apache.IoTDB
 
         public async Task Open(CancellationToken cancellationToken = default)
         {
+            _healthMetrics = new PoolHealthMetrics(_poolSize);
             _clients = new ConcurrentClientQueue();
             _clients.Timeout = _timeout * 5;
+            _clients.DiagnosticReporter = this;
 
             if (_nodeUrls.Count == 0)
             {
@@ -277,10 +312,7 @@ namespace Apache.IoTDB
                     }
                     catch (Exception e)
                     {
-                        if (_debugMode)
-                        {
-                            _logger.LogWarning(e, "Currently connecting to {0}:{1} failed", _host, _port);
-                        }
+                        _logger?.LogWarning(e, "Failed to create connection {0}/{1} to {2}:{3}", index + 1, _poolSize, _host, _port);
                     }
                 }
             }
@@ -304,10 +336,7 @@ namespace Apache.IoTDB
                         }
                         catch (Exception e)
                         {
-                            if (_debugMode)
-                            {
-                                _logger.LogWarning(e, "Currently connecting to {0}:{1} failed", endPoint.Ip, endPoint.Port);
-                            }
+                            _logger?.LogWarning(e, "Failed to create connection to {0}:{1}", endPoint.Ip, endPoint.Port);
                         }
                     }
                     if (!isConnected) // current client could not connect to any endpoint
@@ -340,10 +369,7 @@ namespace Apache.IoTDB
                     }
                     catch (Exception e)
                     {
-                        if (_debugMode)
-                        {
-                            _logger.LogWarning(e, "Attempt reconnecting to {0}:{1} failed", _host, _port);
-                        }
+                        _logger?.LogWarning(e, "Reconnection attempt {0}/{1} to {2}:{3} failed", attempt, RetryNum, _host, _port);
                     }
                 }
             }
@@ -367,15 +393,13 @@ namespace Apache.IoTDB
                         }
                         catch (Exception e)
                         {
-                            if (_debugMode)
-                            {
-                                _logger.LogWarning(e, "Attempt connecting to {0}:{1} failed", _endPoints[j].Ip, _endPoints[j].Port);
-                            }
+                            _logger?.LogWarning(e, "Reconnection attempt {0}/{1} to {2}:{3} failed", attempt, RetryNum, _endPoints[j].Ip, _endPoints[j].Port);
                         }
                     }
                 }
             }
 
+            _healthMetrics?.IncrementReconnectionFailures();
             throw new TException("Error occurs when reconnecting session pool. Could not connect to any server", null);
         }
 
@@ -1435,6 +1459,7 @@ namespace Apache.IoTDB
                     if (_database != previousDB)
                     {
                         // all client should switch to the same database
+                        var failedClients = new List<(long SessionId, Exception Error)>();
                         foreach (var c in _clients.ClientQueue)
                         {
                             try
@@ -1447,10 +1472,17 @@ namespace Apache.IoTDB
                             }
                             catch (Exception e)
                             {
-                                _logger.LogError("switch database from {0} to {1} failed for {2}, error: {3}", previousDB, _database, c.SessionId, e.Message);
+                                failedClients.Add((c.SessionId, e));
+                                _logger?.LogError("switch database from {0} to {1} failed for {2}, error: {3}", previousDB, _database, c.SessionId, e.Message);
                             }
                         }
-                        _logger.LogInformation("switch database from {0} to {1}", previousDB, _database);
+
+                        if (failedClients.Count > 0)
+                        {
+                            throw new TException($"Database switch partially failed: {failedClients.Count} client(s) could not switch from {previousDB} to {_database}", failedClients[0].Error);
+                        }
+
+                        _logger?.LogInformation("switch database from {0} to {1}", previousDB, _database);
                     }
 
                     if (_debugMode)
@@ -1829,5 +1861,8 @@ namespace Apache.IoTDB
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }
+
+        SessionPoolDepletedException IPoolDiagnosticReporter.BuildDepletionException(string reasonPhrase)
+            => new SessionPoolDepletedException(reasonPhrase, AvailableClients, TotalPoolSize, FailedReconnections);
     }
 }
