@@ -37,6 +37,8 @@ namespace Apache.IoTDB
     public partial class SessionPool : IDisposable, IPoolDiagnosticReporter
     {
         private static readonly TSProtocolVersion ProtocolVersion = TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3;
+        private const string ReconnectErrorSignature = "reconnecting session pool";
+        private const string DepletionReasonReconnectFailed = "Reconnection failed";
 
         private readonly string _username;
         private readonly string _password;
@@ -200,10 +202,9 @@ namespace Apache.IoTDB
                         shouldReturnClient = false;
                         
                         // Check if this is a reconnection failure from Reconnect method
-                        if (retryEx is TException && retryEx.Message.Contains("reconnecting session pool"))
+                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
                         {
-                            var depleteReason = "Reconnection failed";
-                            throw new SessionPoolDepletedException(depleteReason, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
                         }
                         
                         // Preserve original error message from server
@@ -236,10 +237,9 @@ namespace Apache.IoTDB
                         shouldReturnClient = false;
                         
                         // Check if this is a reconnection failure from Reconnect method
-                        if (retryEx is TException && retryEx.Message.Contains("reconnecting session pool"))
+                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
                         {
-                            var depleteReason = "Reconnection failed";
-                            throw new SessionPoolDepletedException(depleteReason, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
                         }
                         
                         // Preserve original error message from server
