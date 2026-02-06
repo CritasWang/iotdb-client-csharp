@@ -157,9 +157,12 @@ namespace Apache.IoTDB
         public async Task<TResult> ExecuteClientOperationAsync<TResult>(AsyncOperation<TResult> operation, string errMsg, bool retryOnFailure = true, bool putClientBack = true)
         {
             Client client = _clients.Take();
+            bool shouldReturnClient = true;
+            bool operationSucceeded = false;
             try
             {
                 var resp = await operation(client);
+                operationSucceeded = true;
                 return resp;
             }
             catch (TException ex)
@@ -169,16 +172,25 @@ namespace Apache.IoTDB
                     try
                     {
                         client = await Reconnect(client);
-                        return await operation(client);
+                        var resp = await operation(client);
+                        operationSucceeded = true;
+                        return resp;
                     }
-                    catch (TException retryEx)
+                    catch (Exception retryEx)
                     {
-                        throw new TException(errMsg, retryEx);
+                        // Reconnection failed or retry operation failed
+                        // Client is closed by Reconnect, should not be returned to pool
+                        shouldReturnClient = false;
+                        // Preserve original error message from server
+                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
+                        throw new TException(detailedMsg, retryEx);
                     }
                 }
                 else
                 {
-                    throw new TException(errMsg, ex);
+                    // Preserve original error message from server
+                    string detailedMsg = $"{errMsg}. {ex.Message}";
+                    throw new TException(detailedMsg, ex);
                 }
             }
             catch (Exception ex)
@@ -188,21 +200,36 @@ namespace Apache.IoTDB
                     try
                     {
                         client = await Reconnect(client);
-                        return await operation(client);
+                        var resp = await operation(client);
+                        operationSucceeded = true;
+                        return resp;
                     }
-                    catch (TException retryEx)
+                    catch (Exception retryEx)
                     {
-                        throw new TException(errMsg, retryEx);
+                        // Reconnection failed or retry operation failed
+                        // Client is closed by Reconnect, should not be returned to pool
+                        shouldReturnClient = false;
+                        // Preserve original error message from server
+                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
+                        throw new TException(detailedMsg, retryEx);
                     }
                 }
                 else
                 {
-                    throw new TException(errMsg, ex);
+                    // Preserve original error message from server
+                    string detailedMsg = $"{errMsg}. {ex.Message}";
+                    throw new TException(detailedMsg, ex);
                 }
             }
             finally
             {
-                if (putClientBack)
+                // Return client to pool if:
+                // 1. putClientBack is true (normal operations - client should always be returned), OR
+                // 2. putClientBack is false (query operations) BUT operation failed, meaning SessionDataSet 
+                //    wasn't created and won't manage the client
+                // Do NOT return if reconnection failed (shouldReturnClient is false) because client was closed by Reconnect
+                bool shouldReturnForQueryFailure = !putClientBack && !operationSucceeded;
+                if (shouldReturnClient && (putClientBack || shouldReturnForQueryFailure))
                 {
                     _clients.Add(client);
                 }
