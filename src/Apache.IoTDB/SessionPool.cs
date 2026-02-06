@@ -37,7 +37,6 @@ namespace Apache.IoTDB
     public partial class SessionPool : IDisposable, IPoolDiagnosticReporter
     {
         private static readonly TSProtocolVersion ProtocolVersion = TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3;
-        private const string ReconnectErrorSignature = "Error occurs when reconnecting session pool";
         private const string DepletionReasonReconnectFailed = "Reconnection failed";
 
         private readonly string _username;
@@ -184,65 +183,34 @@ namespace Apache.IoTDB
                 operationSucceeded = true;
                 return resp;
             }
-            catch (TException ex)
-            {
-                if (retryOnFailure)
-                {
-                    try
-                    {
-                        client = await Reconnect(client);
-                        var resp = await operation(client);
-                        operationSucceeded = true;
-                        return resp;
-                    }
-                    catch (Exception retryEx)
-                    {
-                        // Reconnection failed or retry operation failed
-                        // Client is closed by Reconnect, should not be returned to pool
-                        shouldReturnClient = false;
-                        
-                        // Check if this is a reconnection failure from Reconnect method
-                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
-                        {
-                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
-                        }
-                        
-                        // Preserve original error message from server
-                        string detailedMsg = $"{errMsg}. {retryEx.Message}";
-                        throw new TException(detailedMsg, retryEx);
-                    }
-                }
-                else
-                {
-                    // Preserve original error message from server
-                    string detailedMsg = $"{errMsg}. {ex.Message}";
-                    throw new TException(detailedMsg, ex);
-                }
-            }
             catch (Exception ex)
             {
                 if (retryOnFailure)
                 {
+                    // Try to reconnect
                     try
                     {
                         client = await Reconnect(client);
+                        // Reconnect succeeded, client is now a new healthy connection
+                    }
+                    catch (ReconnectionFailedException reconnectEx)
+                    {
+                        // Reconnection failed - original client was closed by Reconnect
+                        shouldReturnClient = false;
+                        throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, reconnectEx);
+                    }
+
+                    // Reconnect succeeded, try the operation again
+                    try
+                    {
                         var resp = await operation(client);
                         operationSucceeded = true;
                         return resp;
                     }
                     catch (Exception retryEx)
                     {
-                        // Reconnection failed or retry operation failed
-                        // Client is closed by Reconnect, should not be returned to pool
-                        shouldReturnClient = false;
-                        
-                        // Check if this is a reconnection failure from Reconnect method
-                        if (retryEx is TException && retryEx.Message.Contains(ReconnectErrorSignature))
-                        {
-                            throw new SessionPoolDepletedException(DepletionReasonReconnectFailed, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
-                        }
-                        
-                        // Preserve original error message from server
+                        // Retry operation failed, but client is healthy and should be returned to pool
+                        // shouldReturnClient remains true
                         string detailedMsg = $"{errMsg}. {retryEx.Message}";
                         throw new TException(detailedMsg, retryEx);
                     }
@@ -258,7 +226,7 @@ namespace Apache.IoTDB
             {
                 // Return client to pool if:
                 // 1. putClientBack is true (normal operations - client should always be returned), OR
-                // 2. putClientBack is false (query operations) BUT operation failed, meaning SessionDataSet 
+                // 2. putClientBack is false (query operations) BUT operation failed, meaning SessionDataSet
                 //    wasn't created and won't manage the client
                 // Do NOT return if reconnection failed (shouldReturnClient is false) because client was closed by Reconnect
                 bool shouldReturnForQueryFailure = !putClientBack && !operationSucceeded;
@@ -400,7 +368,7 @@ namespace Apache.IoTDB
             }
 
             _healthMetrics?.IncrementReconnectionFailures();
-            throw new TException("Error occurs when reconnecting session pool. Could not connect to any server", null);
+            throw new ReconnectionFailedException("Error occurs when reconnecting session pool. Could not connect to any server");
         }
 
         public bool IsOpen() => !_isClose;
