@@ -48,45 +48,36 @@ namespace Apache.IoTDB
             Monitor.Exit(ClientQueue);
             Thread.Sleep(0);
         }
-        int _ref = 0;
-        public void AddRef()
-        {
-            lock (this)
-            {
-                _ref++;
-            }
-        }
-        public int GetRef()
-        {
-            return _ref;
-        }
-        public void RemoveRef()
-        {
-            lock (this)
-            {
-                _ref--;
-            }
-        }
+        private int _ref = 0;
+        public void AddRef() => Interlocked.Increment(ref _ref);
+        public int GetRef() => Volatile.Read(ref _ref);
+        public void RemoveRef() => Interlocked.Decrement(ref _ref);
         public int Timeout { get; set; } = 10;
         public Client Take()
         {
             Client client = null;
             Monitor.Enter(ClientQueue);
-            while (true)
+            try
             {
-                bool timeout = false;
-                if (ClientQueue.IsEmpty)
+                while (true)
                 {
-                    timeout = !Monitor.Wait(ClientQueue, TimeSpan.FromSeconds(Timeout));
-                }
-                ClientQueue.TryDequeue(out client);
+                    bool timeout = false;
+                    if (ClientQueue.IsEmpty)
+                    {
+                        timeout = !Monitor.Wait(ClientQueue, TimeSpan.FromSeconds(Timeout));
+                    }
+                    ClientQueue.TryDequeue(out client);
 
-                if (client != null || timeout)
-                {
-                    break;
+                    if (client != null || timeout)
+                    {
+                        break;
+                    }
                 }
             }
-            Monitor.Exit(ClientQueue);
+            finally
+            {
+                Monitor.Exit(ClientQueue);
+            }
             if (client == null)
             {
                 var reasonPhrase = $"Connection pool is empty and wait time out({Timeout}s)";

@@ -53,12 +53,8 @@ namespace Apache.IoTDB
             int availableClients,
             int totalPoolSize,
             int failedReconnections)
-            : base($"SessionPool depletion detected: {depletionReason}", null)
+            : this(depletionReason, availableClients, totalPoolSize, failedReconnections, null)
         {
-            DepletionReason = depletionReason;
-            AvailableClients = availableClients;
-            TotalPoolSize = totalPoolSize;
-            FailedReconnections = failedReconnections;
         }
 
         internal SessionPoolDepletedException(

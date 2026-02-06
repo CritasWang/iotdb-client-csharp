@@ -312,10 +312,7 @@ namespace Apache.IoTDB
                     }
                     catch (Exception e)
                     {
-                        if (_debugMode)
-                        {
-                            _logger.LogWarning(e, "Currently connecting to {0}:{1} failed", _host, _port);
-                        }
+                        _logger?.LogWarning(e, "Failed to create connection {0}/{1} to {2}:{3}", index + 1, _poolSize, _host, _port);
                     }
                 }
             }
@@ -339,10 +336,7 @@ namespace Apache.IoTDB
                         }
                         catch (Exception e)
                         {
-                            if (_debugMode)
-                            {
-                                _logger.LogWarning(e, "Currently connecting to {0}:{1} failed", endPoint.Ip, endPoint.Port);
-                            }
+                            _logger?.LogWarning(e, "Failed to create connection to {0}:{1}", endPoint.Ip, endPoint.Port);
                         }
                     }
                     if (!isConnected) // current client could not connect to any endpoint
@@ -375,10 +369,7 @@ namespace Apache.IoTDB
                     }
                     catch (Exception e)
                     {
-                        if (_debugMode)
-                        {
-                            _logger.LogWarning(e, "Attempt reconnecting to {0}:{1} failed", _host, _port);
-                        }
+                        _logger?.LogWarning(e, "Reconnection attempt {0}/{1} to {2}:{3} failed", attempt, RetryNum, _host, _port);
                     }
                 }
             }
@@ -402,10 +393,7 @@ namespace Apache.IoTDB
                         }
                         catch (Exception e)
                         {
-                            if (_debugMode)
-                            {
-                                _logger.LogWarning(e, "Attempt connecting to {0}:{1} failed", _endPoints[j].Ip, _endPoints[j].Port);
-                            }
+                            _logger?.LogWarning(e, "Reconnection attempt {0}/{1} to {2}:{3} failed", attempt, RetryNum, _endPoints[j].Ip, _endPoints[j].Port);
                         }
                     }
                 }
@@ -1471,6 +1459,7 @@ namespace Apache.IoTDB
                     if (_database != previousDB)
                     {
                         // all client should switch to the same database
+                        var failedClients = new List<(long SessionId, Exception Error)>();
                         foreach (var c in _clients.ClientQueue)
                         {
                             try
@@ -1483,10 +1472,17 @@ namespace Apache.IoTDB
                             }
                             catch (Exception e)
                             {
-                                _logger.LogError("switch database from {0} to {1} failed for {2}, error: {3}", previousDB, _database, c.SessionId, e.Message);
+                                failedClients.Add((c.SessionId, e));
+                                _logger?.LogError("switch database from {0} to {1} failed for {2}, error: {3}", previousDB, _database, c.SessionId, e.Message);
                             }
                         }
-                        _logger.LogInformation("switch database from {0} to {1}", previousDB, _database);
+
+                        if (failedClients.Count > 0)
+                        {
+                            throw new TException($"Database switch partially failed: {failedClients.Count} client(s) could not switch from {previousDB} to {_database}", failedClients[0].Error);
+                        }
+
+                        _logger?.LogInformation("switch database from {0} to {1}", previousDB, _database);
                     }
 
                     if (_debugMode)
@@ -1867,11 +1863,6 @@ namespace Apache.IoTDB
         }
 
         SessionPoolDepletedException IPoolDiagnosticReporter.BuildDepletionException(string reasonPhrase)
-        {
-            var idleCount = AvailableClients;
-            var maxCapacity = TotalPoolSize;
-            var reconnectIssueCount = FailedReconnections;
-            return new SessionPoolDepletedException(reasonPhrase, idleCount, maxCapacity, reconnectIssueCount);
-        }
+            => new SessionPoolDepletedException(reasonPhrase, AvailableClients, TotalPoolSize, FailedReconnections);
     }
 }

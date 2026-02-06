@@ -33,7 +33,6 @@ namespace Apache.IoTDB
         public PoolHealthMetrics(int configuredMaxSize)
         {
             _configuredMaxSize = configuredMaxSize;
-            _reconnectionFailureTally = 0;
         }
 
         public void IncrementReconnectionFailures()
