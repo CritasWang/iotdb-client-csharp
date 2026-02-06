@@ -37,7 +37,7 @@ namespace Apache.IoTDB
     public partial class SessionPool : IDisposable, IPoolDiagnosticReporter
     {
         private static readonly TSProtocolVersion ProtocolVersion = TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3;
-        private const string ReconnectErrorSignature = "reconnecting session pool";
+        private const string ReconnectErrorSignature = "Error occurs when reconnecting session pool";
         private const string DepletionReasonReconnectFailed = "Reconnection failed";
 
         private readonly string _username;
