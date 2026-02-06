@@ -82,7 +82,6 @@ namespace Apache.IoTDB
         /// </summary>
         public int FailedReconnections => _failedReconnections;
 
-
         [Obsolete("This method is deprecated, please use new SessionPool.Builder().")]
         public SessionPool(string host, int port, int poolSize)
                         : this(host, port, "root", "root", 1024, "Asia/Shanghai", poolSize, true, 60)
