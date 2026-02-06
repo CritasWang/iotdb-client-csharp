@@ -28,6 +28,7 @@ namespace Apache.IoTDB
     public class ConcurrentClientQueue
     {
         public ConcurrentQueue<Client> ClientQueue { get; }
+        internal IPoolDiagnosticReporter DiagnosticReporter { get; set; }
 
         public ConcurrentClientQueue(List<Client> clients)
         {
@@ -88,9 +89,19 @@ namespace Apache.IoTDB
             Monitor.Exit(ClientQueue);
             if (client == null)
             {
-                throw new TimeoutException($"Connection pool is empty and wait time out({Timeout}s)!");
+                var reasonPhrase = $"Connection pool is empty and wait time out({Timeout}s)";
+                if (DiagnosticReporter != null)
+                {
+                    throw DiagnosticReporter.BuildDepletionException(reasonPhrase);
+                }
+                throw new TimeoutException(reasonPhrase);
             }
             return client;
         }
+    }
+
+    internal interface IPoolDiagnosticReporter
+    {
+        SessionPoolDepletedException BuildDepletionException(string reasonPhrase);
     }
 }

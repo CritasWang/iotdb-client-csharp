@@ -34,7 +34,7 @@ using Thrift.Transport.Client;
 namespace Apache.IoTDB
 {
 
-    public partial class SessionPool : IDisposable
+    public partial class SessionPool : IDisposable, IPoolDiagnosticReporter
     {
         private static readonly TSProtocolVersion ProtocolVersion = TSProtocolVersion.IOTDB_SERVICE_PROTOCOL_V3;
 
@@ -62,7 +62,24 @@ namespace Apache.IoTDB
         private bool _isClose = true;
         private ConcurrentClientQueue _clients;
         private ILogger _logger;
+        private PoolHealthMetrics _healthMetrics;
+        
         public delegate Task<TResult> AsyncOperation<TResult>(Client client);
+        
+        /// <summary>
+        /// Retrieves current count of idle clients ready for operations.
+        /// </summary>
+        public int AvailableClients => _clients?.ClientQueue.Count ?? 0;
+        
+        /// <summary>
+        /// Retrieves the configured maximum capacity of the session pool.
+        /// </summary>
+        public int TotalPoolSize => _healthMetrics?.GetConfiguredMaxSize() ?? _poolSize;
+        
+        /// <summary>
+        /// Retrieves cumulative tally of reconnection failures since pool was opened.
+        /// </summary>
+        public int FailedReconnections => _healthMetrics?.GetReconnectionFailureTally() ?? 0;
 
 
         [Obsolete("This method is deprecated, please use new SessionPool.Builder().")]
@@ -181,6 +198,14 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
+                        
+                        // Check if this is a reconnection failure from Reconnect method
+                        if (retryEx is TException && retryEx.Message.Contains("reconnecting session pool"))
+                        {
+                            var depleteReason = "Reconnection failed";
+                            throw new SessionPoolDepletedException(depleteReason, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                        }
+                        
                         // Preserve original error message from server
                         string detailedMsg = $"{errMsg}. {retryEx.Message}";
                         throw new TException(detailedMsg, retryEx);
@@ -209,6 +234,14 @@ namespace Apache.IoTDB
                         // Reconnection failed or retry operation failed
                         // Client is closed by Reconnect, should not be returned to pool
                         shouldReturnClient = false;
+                        
+                        // Check if this is a reconnection failure from Reconnect method
+                        if (retryEx is TException && retryEx.Message.Contains("reconnecting session pool"))
+                        {
+                            var depleteReason = "Reconnection failed";
+                            throw new SessionPoolDepletedException(depleteReason, AvailableClients, TotalPoolSize, FailedReconnections, retryEx);
+                        }
+                        
                         // Preserve original error message from server
                         string detailedMsg = $"{errMsg}. {retryEx.Message}";
                         throw new TException(detailedMsg, retryEx);
@@ -264,8 +297,10 @@ namespace Apache.IoTDB
 
         public async Task Open(CancellationToken cancellationToken = default)
         {
+            _healthMetrics = new PoolHealthMetrics(_poolSize);
             _clients = new ConcurrentClientQueue();
             _clients.Timeout = _timeout * 5;
+            _clients.DiagnosticReporter = this;
 
             if (_nodeUrls.Count == 0)
             {
@@ -376,6 +411,7 @@ namespace Apache.IoTDB
                 }
             }
 
+            _healthMetrics?.IncrementReconnectionFailures();
             throw new TException("Error occurs when reconnecting session pool. Could not connect to any server", null);
         }
 
@@ -1828,6 +1864,14 @@ namespace Apache.IoTDB
         {
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
+        }
+
+        SessionPoolDepletedException IPoolDiagnosticReporter.BuildDepletionException(string reasonPhrase)
+        {
+            var idleCount = AvailableClients;
+            var maxCapacity = TotalPoolSize;
+            var reconnectIssueCount = FailedReconnections;
+            return new SessionPoolDepletedException(reasonPhrase, idleCount, maxCapacity, reconnectIssueCount);
         }
     }
 }
