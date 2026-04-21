@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -450,9 +451,17 @@ namespace Apache.IoTDB
         private async Task<Client> CreateAndOpen(string host, int port, bool enableRpcCompression, int timeout, bool useSsl, string cert, string sqlDialect, string database, CancellationToken cancellationToken = default)
         {
 
-            TTransport socket = useSsl ?
-                new TTlsSocketTransport(host, port, null, timeout, new X509Certificate2(File.ReadAllBytes(cert))) :
-                new TSocketTransport(host, port, null, timeout);
+            TTransport socket;
+            if (useSsl)
+            {
+                socket = IPAddress.TryParse(host, out var tlsIp)
+                    ? new TTlsSocketTransport(tlsIp, port, null, timeout, new X509Certificate2(File.ReadAllBytes(cert)))
+                    : new TTlsSocketTransport(host, port, null, timeout, new X509Certificate2(File.ReadAllBytes(cert)));
+            }
+            else
+            {
+                socket = new TSocketTransport(host, port, connectClient: false, null, timeout);
+            }
 
             var transport = new TFramedTransport(socket);
 
