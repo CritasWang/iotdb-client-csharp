@@ -58,26 +58,52 @@ namespace Apache.IoTDB
         public void AddRef() => Interlocked.Increment(ref _ref);
         public int GetRef() => Volatile.Read(ref _ref);
         public void RemoveRef() => Interlocked.Decrement(ref _ref);
-        public int Timeout { get; set; } = 10;
+
+        /// <summary>
+        /// The maximum time, in milliseconds, that <see cref="Take"/> waits for a client to be
+        /// returned to the pool before throwing. Defaults to 10000 (10 seconds).
+        /// </summary>
+        public int TimeoutInMs { get; set; } = DefaultTimeoutInMs;
+
+        internal const int DefaultTimeoutInMs = 10_000;
+
+        /// <summary>
+        /// The wait timeout expressed in seconds. Kept for backward compatibility only; it is a thin
+        /// wrapper over <see cref="TimeoutInMs"/>. Prefer <see cref="TimeoutInMs"/>, which avoids the
+        /// unit ambiguity that previously caused millisecond values to be interpreted as seconds.
+        /// </summary>
+        [Obsolete("Use TimeoutInMs instead. This property interprets its value as seconds.")]
+        public int Timeout
+        {
+            get => TimeoutInMs / 1000;
+            set => TimeoutInMs = value * 1000;
+        }
+
         public Client Take()
         {
             Client client = null;
+            // One overall deadline for the whole call. Return() uses PulseAll, so every waiter wakes up
+            // while only one of them can dequeue the returned client; re-arming the full timeout on each
+            // wake-up would let an unlucky waiter exceed the configured bound indefinitely under churn.
+            var budgetMs = TimeoutInMs;
+            var elapsed = Stopwatch.StartNew();
             Monitor.Enter(ClientQueue);
             try
             {
                 while (true)
                 {
-                    bool timeout = false;
-                    if (ClientQueue.IsEmpty)
-                    {
-                        timeout = !Monitor.Wait(ClientQueue, TimeSpan.FromSeconds(Timeout));
-                    }
-                    ClientQueue.TryDequeue(out client);
-
-                    if (client != null || timeout)
+                    if (ClientQueue.TryDequeue(out client))
                     {
                         break;
                     }
+
+                    var remainingMs = budgetMs - (int)elapsed.ElapsedMilliseconds;
+                    if (remainingMs <= 0)
+                    {
+                        break;
+                    }
+
+                    Monitor.Wait(ClientQueue, TimeSpan.FromMilliseconds(remainingMs));
                 }
             }
             finally
@@ -86,7 +112,7 @@ namespace Apache.IoTDB
             }
             if (client == null)
             {
-                var reasonPhrase = $"Connection pool is empty and wait time out({Timeout}s)";
+                var reasonPhrase = $"Connection pool is empty and wait time out({budgetMs}ms)";
                 if (DiagnosticReporter != null)
                 {
                     throw DiagnosticReporter.BuildDepletionException(reasonPhrase);
